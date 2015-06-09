@@ -7,10 +7,15 @@
 
 (defn- read-project [] (edn/read-string (slurp "project.clj")))
 
+(def ^:private lein-defaults
+  {:resource-paths ["src/main/resource"]
+   :target-path    "target"
+   :source-paths   ["src" "src/main/clojure"]})
+
 (defn- lein->map
   [data]
   (reduce (fn [a [k v]] (assoc a k v))
-          {}
+          lein-defaults
           (partition 2 2 data)))
 
 (defn- lein->data
@@ -21,13 +26,38 @@
 
   ([] (lein->data (read-project))))
 
-(deftask merge-deps
+(def ^:private project-mappings
+  {:dependencies   {}
+   :resource-paths {:mapping set}
+   :target-path    {}
+   :source-paths   {:mapping set}
+   :mirrors        {}
+   :repositories   {}
+   :local-repo     {}
+   :offline?       {}})
+
+(defn- env     [lp] (get-in project-mappings [lp :env] lp))
+(defn- mapping [lp] (get-in project-mappings [lp :mapping] identity))
+
+(defn- project->env
+  ([lp lv]
+   (when (project-mappings lp)
+     [(env lp) ((mapping lp) lv)]))
+
+  ([[lp lv]] (project->env lp lv)))
+
+(defn- properties->env
   []
   (->> (lein->data)
-       (:dependencies)
-       (merge-env! :dependencies)))
+       (keep project->env)
+       (reduce (partial apply assoc) {})))
 
-(def ^:private pom-options
+(deftask merge-properties
+  []
+  (doseq [[k v] (properties->env)]
+    (merge-env! k v)))
+
+(def ^:private lein-pom-mappings
   {:project     identity
    :version     identity
    :description identity
@@ -35,12 +65,6 @@
    :scm         identity
    :license   #(into {} (for [x %] (vec (map name x))))})
 
-(defn merge-pom
-  []
-  (let [opts (lein->data)]
-    (doseq [[opt f] pom-options
-            :when (opt opts)]
-      (prn 'pom {opt (f (opt opts))}))))
+(defn merge-pom [])
 
-(defn merge-lein
-  [])
+(defn merge-lein [])
